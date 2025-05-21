@@ -24,11 +24,7 @@ public class LoginInterceptor implements HandlerInterceptor {
             return false;
         }
         // 5、存在，保存用户信息到ThreadLocal
-        UserDTO userDTO = new UserDTO();
-        userDTO.setIcon(user.getIcon());
-        userDTO.setNickName(user.getNickName());
-        userDTO.setId(user.getId());
-        UserHolder.saveUser(userDTO);
+        UserHolder.saveUser(user);
         // 6、放行
         return true;
     }

@@ -71,7 +71,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         // 1、创建用户，填充属性
         User user = new User();
         user.setPhone(phone);
-        user.setNickName(USER_NICK_NAME_PREFIX+ RandomUtil.randomNumbers(6));
+        user.setNickName(USER_NICK_NAME_PREFIX + RandomUtil.randomNumbers(6));
         // 2、保存用户对象
         save(user);
         return user;
