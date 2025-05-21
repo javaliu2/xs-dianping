@@ -16,15 +16,15 @@ public class LoginInterceptor implements HandlerInterceptor {
         // 1、获取session
         HttpSession session = request.getSession();
         // 2、获取session中的用户
-        User user = (User)session.getAttribute(KEY_USER);
+        UserDTO userDTO = (UserDTO)session.getAttribute(KEY_USER);
         // 3、判断用户是否存在
-        if (user == null) {
+        if (userDTO == null) {
             // 4、不存在，拦截，返回401状态码（未认证）
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             return false;
         }
         // 5、存在，保存用户信息到ThreadLocal
-        UserHolder.saveUser(user);
+        UserHolder.saveUser(userDTO);
         // 6、放行
         return true;
     }

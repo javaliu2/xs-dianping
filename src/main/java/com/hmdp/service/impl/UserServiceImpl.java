@@ -1,16 +1,19 @@
 package com.hmdp.service.impl;
 
+import ch.qos.logback.core.joran.util.beans.BeanUtil;
 import cn.hutool.core.util.RandomUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.constant.MessageConstant;
 import com.hmdp.constant.SessionConstant;
 import com.hmdp.dto.LoginFormDTO;
 import com.hmdp.dto.Result;
+import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.User;
 import com.hmdp.mapper.UserMapper;
 import com.hmdp.service.IUserService;
 import com.hmdp.utils.RegexUtils;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 
 import javax.servlet.http.HttpSession;
@@ -63,7 +66,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
             user = createUser(phone);
         }
         // 6、保存用户信息到session中
-        session.setAttribute(KEY_USER, user);
+        UserDTO userDTO = new UserDTO();
+        userDTO.setId(user.getId());
+        userDTO.setIcon(user.getIcon());
+        userDTO.setNickName(user.getNickName());
+        session.setAttribute(KEY_USER, userDTO);
         return Result.ok();
     }
 
