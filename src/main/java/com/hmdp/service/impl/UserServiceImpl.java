@@ -1,10 +1,9 @@
 package com.hmdp.service.impl;
 
-import ch.qos.logback.core.joran.util.beans.BeanUtil;
 import cn.hutool.core.util.RandomUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.constant.MessageConstant;
-import com.hmdp.constant.SessionConstant;
+import com.hmdp.constant.RedisConstant;
 import com.hmdp.dto.LoginFormDTO;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
@@ -13,13 +12,20 @@ import com.hmdp.mapper.UserMapper;
 import com.hmdp.service.IUserService;
 import com.hmdp.utils.RegexUtils;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
-import javax.servlet.http.HttpSession;
-import javax.xml.transform.OutputKeys;
+import java.beans.BeanInfo;
+import java.beans.Introspector;
+import java.beans.PropertyDescriptor;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
-import static com.hmdp.constant.SessionConstant.*;
+import static com.hmdp.constant.RedisConstant.KEY_LOGIN_CODE;
+import static com.hmdp.constant.RedisConstant.KEY_LOGIN_CODE_TTL;
 import static com.hmdp.utils.SystemConstants.USER_NICK_NAME_PREFIX;
 
 /**
@@ -34,19 +40,28 @@ import static com.hmdp.utils.SystemConstants.USER_NICK_NAME_PREFIX;
 @Slf4j
 public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IUserService {
 
+    @Autowired
+    private StringRedisTemplate stringRedisTemplate;
+
     @Override
-    public Result sendCode(String phone, HttpSession session) {
+    public Result sendCode(String phone) {
         if (RegexUtils.isPhoneInvalid(phone)) {
             return Result.fail(MessageConstant.ERROR_PHONE_FORMAT);
         }
         String code = RandomUtil.randomNumbers(6);
-        session.setAttribute(KEY_VERIFY_CODE, code);
+        // 1、采用session作为会话信息的存储
+//        session.setAttribute(KEY_VERIFY_CODE, code);  // 每一个用户一个会话，因此使用相同的key互不妨碍
+        // 2、采用redis作为会话信息的存储，所用用户共享一个redis存储，因此需要使用不同的key，而手机号唯一正好作为key
+        // 另外，加前缀使得手机号码有意义，便于开发维护
+        // 需要设置有效期，防止redis存储空间不够用
+        String key = KEY_LOGIN_CODE + phone;
+        stringRedisTemplate.opsForValue().set(key, code, KEY_LOGIN_CODE_TTL, TimeUnit.MINUTES);
         log.debug("[Service]: 发送短信验证码成功，验证码：{}", code);
         return Result.ok();
     }
 
     @Override
-    public Result login(LoginFormDTO loginForm, HttpSession session) {
+    public Result login(LoginFormDTO loginForm) {
         // 1.校验手机号
         String phone = loginForm.getPhone();
         if (RegexUtils.isPhoneInvalid(phone)) {
@@ -54,25 +69,62 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
             return Result.fail(MessageConstant.ERROR_PHONE_FORMAT);
         }
         // 3. 校验验证码
-        Object cacheCode = session.getAttribute(KEY_VERIFY_CODE);// 常量提取到一个常量值类中是工程实践
+        // 3.1 session存储会话信息
+//        Object cacheCode = session.getAttribute(KEY_VERIFY_CODE);// 常量提取到一个常量值类中是工程实践
+        // 3.2 redis存储
+        String key = KEY_LOGIN_CODE + phone;
+        String cacheCode = stringRedisTemplate.opsForValue().get(key);
         String code = loginForm.getCode();
-        if (cacheCode == null || !code.equals(String.valueOf(cacheCode))) {
+        if (!code.equals(cacheCode)) {
             return Result.fail(MessageConstant.ERROR_VERIFY_CODE);
         }
         // 4、根据手机号查询用户
         User user = query().eq("phone", phone).one();  // mybatis-plus提供的API
         // 5、判断用户是否存在
         if (user == null) {
+            // 不存在的话，创建用户
             user = createUser(phone);
         }
-        // 6、保存用户信息到session中
+        // 6、保存用户信息到redis中
         UserDTO userDTO = new UserDTO();
         userDTO.setId(user.getId());
         userDTO.setIcon(user.getIcon());
         userDTO.setNickName(user.getNickName());
-        session.setAttribute(KEY_USER, userDTO);
-        return Result.ok();
+        // 6.1 session存储
+//        session.setAttribute(KEY_USER, userDTO);
+        // 6.2 redis存储
+        // 1) value: 需要将userDTO对象转为map存储
+        Map<String, String> userDTOMap = bean2Map(userDTO);
+        log.debug("bean2Map() test, 对象: {}, map存储: {}", userDTO, userDTOMap);
+        // 2) key: 采用语义化前缀 + UUID
+        String token = UUID.randomUUID().toString();
+        String tokenKey = RedisConstant.KEY_LOGIN_TOKEN + token;
+        stringRedisTemplate.opsForHash().putAll(tokenKey, userDTOMap);
+        // 3) 设置数据有效期
+        stringRedisTemplate.expire(tokenKey, RedisConstant.KEY_LOGIN_TOKEN_TTL, TimeUnit.MINUTES);
+        // 7、将token返回给前端，使得以后每次请求都携带该token以表明身份
+        return Result.ok(token);
     }
+
+    private Map<String, String> bean2Map(Object bean) {
+        Map<String, String> map = new HashMap<>();
+        try {
+            BeanInfo beanInfo = Introspector.getBeanInfo(bean.getClass());
+            for (PropertyDescriptor descriptor : beanInfo.getPropertyDescriptors()) {
+                String propertyName = descriptor.getName();
+                if (!"class".equals(propertyName)) {
+                    Object value = descriptor.getReadMethod().invoke(bean);
+                    if (value != null) {
+                        map.put(propertyName, String.valueOf(value));
+                    }
+                }
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Bean to Map<String, String> conversion error", e);
+        }
+        return map;
+    }
+
 
     private User createUser(String phone) {
         // 1、创建用户，填充属性
