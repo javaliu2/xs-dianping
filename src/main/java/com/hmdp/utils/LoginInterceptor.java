@@ -2,7 +2,6 @@ package com.hmdp.utils;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.StrUtil;
-import com.hmdp.constant.RedisConstant;
 import com.hmdp.dto.UserDTO;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.servlet.HandlerInterceptor;
@@ -48,7 +47,7 @@ public class LoginInterceptor implements HandlerInterceptor {
             return  false;
         }
         // 2、获取redis中以该token为key的用户map
-        String key = RedisConstant.KEY_LOGIN_TOKEN + token;
+        String key = RedisConstants.LOGIN_USER_KEY + token;
         // 2.1 该类不由Spring托管，因此需要采用构造函数的方式将stringRedisTemplate注入进来
         Map<Object, Object> userMap = stringRedisTemplate.opsForHash().entries(key);
         if (userMap.isEmpty()) {
@@ -59,8 +58,8 @@ public class LoginInterceptor implements HandlerInterceptor {
         UserDTO userDTO = BeanUtil.fillBeanWithMap(userMap, new UserDTO(), false);
         // 4、保存用户信息到ThreadLocal
         UserHolder.saveUser(userDTO);
-        // 5、重新设置有效期
-        stringRedisTemplate.expire(key, RedisConstant.KEY_LOGIN_TOKEN_TTL, TimeUnit.MINUTES);
+        // 5、刷新有效期
+        stringRedisTemplate.expire(key, RedisConstants.LOGIN_USER_TTL, TimeUnit.MINUTES);
         return true;
     }
 

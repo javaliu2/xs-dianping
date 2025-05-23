@@ -3,7 +3,6 @@ package com.hmdp.service.impl;
 import cn.hutool.core.util.RandomUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.constant.MessageConstant;
-import com.hmdp.constant.RedisConstant;
 import com.hmdp.dto.LoginFormDTO;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
@@ -24,8 +23,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
-import static com.hmdp.constant.RedisConstant.KEY_LOGIN_CODE;
-import static com.hmdp.constant.RedisConstant.KEY_LOGIN_CODE_TTL;
+import static com.hmdp.utils.RedisConstants.*;
 import static com.hmdp.utils.SystemConstants.USER_NICK_NAME_PREFIX;
 
 /**
@@ -54,8 +52,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         // 2、采用redis作为会话信息的存储，所用用户共享一个redis存储，因此需要使用不同的key，而手机号唯一正好作为key
         // 另外，加前缀使得手机号码有意义，便于开发维护
         // 需要设置有效期，防止redis存储空间不够用
-        String key = KEY_LOGIN_CODE + phone;
-        stringRedisTemplate.opsForValue().set(key, code, KEY_LOGIN_CODE_TTL, TimeUnit.MINUTES);
+        String key = LOGIN_CODE_KEY + phone;
+        stringRedisTemplate.opsForValue().set(key, code, LOGIN_CODE_TTL, TimeUnit.MINUTES);
         log.debug("[Service]: 发送短信验证码成功，验证码：{}", code);
         return Result.ok();
     }
@@ -72,7 +70,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         // 3.1 session存储会话信息
 //        Object cacheCode = session.getAttribute(KEY_VERIFY_CODE);// 常量提取到一个常量值类中是工程实践
         // 3.2 redis存储
-        String key = KEY_LOGIN_CODE + phone;
+        String key = LOGIN_CODE_KEY + phone;
         String cacheCode = stringRedisTemplate.opsForValue().get(key);
         String code = loginForm.getCode();
         if (!code.equals(cacheCode)) {
@@ -98,10 +96,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         log.debug("bean2Map() test, 对象: {}, map存储: {}", userDTO, userDTOMap);
         // 2) key: 采用语义化前缀 + UUID
         String token = UUID.randomUUID().toString();
-        String tokenKey = RedisConstant.KEY_LOGIN_TOKEN + token;
+        String tokenKey = LOGIN_USER_KEY + token;
         stringRedisTemplate.opsForHash().putAll(tokenKey, userDTOMap);
         // 3) 设置数据有效期
-        stringRedisTemplate.expire(tokenKey, RedisConstant.KEY_LOGIN_TOKEN_TTL, TimeUnit.MINUTES);
+        stringRedisTemplate.expire(tokenKey, LOGIN_USER_TTL, TimeUnit.MINUTES);
         // 7、将token返回给前端，使得以后每次请求都携带该token以表明身份
         return Result.ok(token);
     }
