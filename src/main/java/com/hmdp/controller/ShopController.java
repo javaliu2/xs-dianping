@@ -3,10 +3,12 @@ package com.hmdp.controller;
 
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.hmdp.constant.MessageConstant;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.Shop;
 import com.hmdp.service.IShopService;
 import com.hmdp.utils.SystemConstants;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
@@ -21,6 +23,7 @@ import javax.annotation.Resource;
  */
 @RestController
 @RequestMapping("/shop")
+@Slf4j
 public class ShopController {
 
     @Resource
@@ -33,7 +36,14 @@ public class ShopController {
      */
     @GetMapping("/{id}")
     public Result queryShopById(@PathVariable("id") Long id) {
-        return Result.ok(shopService.getById(id));
+        // version 1，no cache
+//        return Result.ok(shopService.getById(id));
+        // version2, with cache
+        Object result = shopService.queryById(id);
+        if (result == null) {
+            return Result.fail(MessageConstant.ERROR_SHOP_NOT_EXIST);
+        }
+        return Result.ok(result);
     }
 
     /**
@@ -56,9 +66,8 @@ public class ShopController {
      */
     @PutMapping
     public Result updateShop(@RequestBody Shop shop) {
-        // 写入数据库
-        shopService.updateById(shop);
-        return Result.ok();
+        log.info("更新商铺，前端参数：{}", shop);
+        return shopService.updateShop(shop);
     }
 
     /**
