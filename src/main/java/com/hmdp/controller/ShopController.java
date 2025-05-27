@@ -36,6 +36,7 @@ public class ShopController {
      */
     @GetMapping("/{id}")
     public Result queryShopById(@PathVariable("id") Long id) {
+        log.info("获取id为{}的商铺信息", id);
         // version 1，no cache
 //        return Result.ok(shopService.getById(id));
         // version2, with cache

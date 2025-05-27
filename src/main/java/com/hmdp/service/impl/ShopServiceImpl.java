@@ -44,8 +44,11 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         // 使用JSON字符串保存对象
         String shopJson = stringRedisTemplate.opsForValue().get(key);
         // 2、查询结果
-        // 2.1 命中，直接返回result
-        if (StrUtil.isNotBlank(shopJson)) {
+        // 2.1 之前缓存的空对象
+        if (RedisConstants.CACHE_NULL_KEY.equals(shopJson)) {
+            return null;
+        } else if (StrUtil.isNotBlank(shopJson)) {
+            // 2.2 命中，直接返回result
             return JSONUtil.toBean(shopJson, Shop.class);
         }
         // 2.2 未命中，顺序执行
@@ -59,6 +62,8 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
             return shop;
         }
         // 3.2 未查询到商户信息，表明该商户不存在，返回null
+        // 补丁：采取缓存空对象的方式避免缓存穿透，设置较小的TTL，一方面避免内存溢出，另一方面最大地减少数据库和缓存的不一致性
+        stringRedisTemplate.opsForValue().set(key, RedisConstants.CACHE_NULL_KEY, RedisConstants.CACHE_NULL_TTL, TimeUnit.MINUTES);
         return null;
     }
 
