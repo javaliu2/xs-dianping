@@ -2,6 +2,7 @@ package com.hmdp.service.impl;
 
 import cn.hutool.core.util.BooleanUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.hmdp.constant.MessageConstant;
 import com.hmdp.dto.Result;
@@ -10,12 +11,16 @@ import com.hmdp.mapper.ShopMapper;
 import com.hmdp.service.IShopService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.RedisConstants;
+import com.hmdp.utils.RedisData;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -32,6 +37,8 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
 
+    private static final ExecutorService CACHE_REBUILD_EXECUTOR = Executors.newFixedThreadPool(10);
+
     /**
      * using redis as cache
      *
@@ -42,8 +49,75 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     public Object queryById(Long id) {
         // 1、解决 缓存穿透 问题的方案
 //        return cachePenetrationSolution(id);
-        // 2、解决 缓存击穿 问题的方案
-        return cacheBreakdownSolution(id);
+        // 2、解决 缓存击穿 问题的方案1，使用互斥锁
+//        return cacheBreakdownSolutionWithMutexLock(id);
+        // 3、解决 缓存击穿 问题的方案2，使用逻辑过期
+        return cacheBreakdownSolutionWithLogicalExpire(id);
+    }
+
+    /**
+     * 使用逻辑过期解决缓存击穿问题
+     *
+     * @param id
+     * @return
+     */
+    private Object cacheBreakdownSolutionWithLogicalExpire(Long id) {
+        // 1、查询缓存
+        String shopKey = RedisConstants.CACHE_SHOP_KEY + id;
+        String redisDataJson = stringRedisTemplate.opsForValue().get(shopKey);
+        // 2、未命中，直接返回null，因为有一个假设，提前将热点数据加入缓存，如果查询不到，证明其不是热点数据
+        if (StrUtil.isBlank(redisDataJson)) {
+            return null;
+        }
+        // 3、命中，从json字符串中解析对象
+        RedisData redisData = JSONUtil.toBean(redisDataJson, RedisData.class);
+        Shop shop = JSONUtil.toBean((JSONObject) redisData.getData(), Shop.class);
+        LocalDateTime expireTime = redisData.getExpireTime();
+        // 4、判断是否过期
+        if (expireTime.isAfter(LocalDateTime.now())) {
+            // 4.1、未过期，直接返回shop
+            return shop;
+        }
+        // 4.2、已过期，进行缓存重建
+        // 5、尝试获取互斥锁
+        String lockKey = RedisConstants.LOCK_SHOP_KEY + id;
+        boolean getLock = tryLock(lockKey);
+        // 5.1、获取锁失败，返回旧的数据
+        if (!getLock) {
+            return shop;
+        }
+        // 5.2、获取锁成功，开启独立线程进行缓存重建，另外返回的也是旧数据
+        CACHE_REBUILD_EXECUTOR.submit(() -> {
+            try {
+                // 6、调用saveShop2Redis
+                saveShop2Redis(id, 10L);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            } finally {
+                // 7、释放互斥锁
+                unlock(lockKey);
+            }
+        });
+        // 本线程也是，直接返回旧数据
+        return shop;
+    }
+
+    /**
+     * 缓存预热
+     *
+     * @param id
+     * @param expireSeconds
+     */
+    public void saveShop2Redis(Long id, Long expireSeconds) throws InterruptedException {
+//        Thread.sleep(200);
+        // 1. 获取shop对象
+        Shop shop = getById(id);
+        // 2. 封装成RedisData对象
+        RedisData redisData = new RedisData();
+        redisData.setData(shop);
+        redisData.setExpireTime(LocalDateTime.now().plusSeconds(expireSeconds));
+        // 3. 写入redis，没有设置过期时间，数据项会一直存在
+        stringRedisTemplate.opsForValue().set(RedisConstants.CACHE_SHOP_KEY + id, JSONUtil.toJsonStr(redisData));
     }
 
     /**
@@ -52,7 +126,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
      * @param id
      * @return
      */
-    private Object cacheBreakdownSolution(Long id) {
+    private Object cacheBreakdownSolutionWithMutexLock(Long id) {
         // 1、查询Redis
         String key = RedisConstants.CACHE_SHOP_KEY + id;
         // 使用JSON字符串保存对象
@@ -73,7 +147,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
             boolean getLock = tryLock(lockKey);
             if (!getLock) {
                 Thread.sleep(400);  // 是业务操作时间的几倍，小于业务时间会造成不必要的内存消耗
-                return cacheBreakdownSolution(id);
+                return cacheBreakdownSolutionWithMutexLock(id);
             }
             // 4、拿到互斥锁，查询数据库
             shop = getById(id);
