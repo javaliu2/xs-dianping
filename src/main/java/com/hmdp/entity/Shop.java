@@ -104,6 +104,6 @@ public class Shop implements Serializable {
     private LocalDateTime updateTime;
 
 
-    @TableField(exist = false)
+    @TableField(exist = false)  // 表明该属性只在实体类有，表中没有对应的字段
     private Double distance;
 }

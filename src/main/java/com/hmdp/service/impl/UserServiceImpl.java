@@ -49,7 +49,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         String code = RandomUtil.randomNumbers(6);
         // 1、采用session作为会话信息的存储
 //        session.setAttribute(KEY_VERIFY_CODE, code);  // 每一个用户一个会话，因此使用相同的key互不妨碍
-        // 2、采用redis作为会话信息的存储，所用用户共享一个redis存储，因此需要使用不同的key，而手机号唯一正好作为key
+        // 2、采用redis作为会话信息的存储，所有用户共享一个redis存储，因此需要使用不同的key，而手机号唯一正好作为key
         // 另外，加前缀使得手机号码有意义，便于开发维护
         // 需要设置有效期，防止redis存储空间不够用
         String key = LOGIN_CODE_KEY + phone;

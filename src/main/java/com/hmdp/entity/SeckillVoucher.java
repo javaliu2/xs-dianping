@@ -28,6 +28,7 @@ public class SeckillVoucher implements Serializable {
 
     /**
      * 关联的优惠券的id
+     * type = IdType.INPUT表示主键值由程序员自己指定，如果不赋值的话，会导致插入失败
      */
     @TableId(value = "voucher_id", type = IdType.INPUT)
     private Long voucherId;
