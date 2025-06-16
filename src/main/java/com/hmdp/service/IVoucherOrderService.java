@@ -16,4 +16,9 @@ public interface IVoucherOrderService extends IService<VoucherOrder> {
     Result seckillVoucher_pessimistic_lock(Long voucherId);
     Result seckillVoucher_optimistic_lock(Long voucherId);
     Result seckillVoucher(Long voucherId);
+    Result seckillVoucher_one_user_one_order(Long voucherId);
+
+    Result createVoucherOrder_final(Long voucherId);
+
+    Result seckillVoucher_one_user_one_order_syn_block_final(Long voucherId);
 }
