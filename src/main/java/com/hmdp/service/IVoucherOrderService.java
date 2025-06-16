@@ -13,5 +13,7 @@ import com.baomidou.mybatisplus.extension.service.IService;
  * @since 2021-12-22
  */
 public interface IVoucherOrderService extends IService<VoucherOrder> {
+    Result seckillVoucher_pessimistic_lock(Long voucherId);
+    Result seckillVoucher_optimistic_lock(Long voucherId);
     Result seckillVoucher(Long voucherId);
 }

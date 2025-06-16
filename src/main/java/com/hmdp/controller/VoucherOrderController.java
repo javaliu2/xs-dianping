@@ -30,7 +30,10 @@ public class VoucherOrderController {
     @PostMapping("seckill/{id}")
     public Result seckillVoucher(@PathVariable("id") Long voucherId) {
         log.info("秒杀券下单【controller】【begin】");
-        Result result = voucherOrderService.seckillVoucher(voucherId);
+        // 1、使用数据库行级锁（悲观锁）解决并发造成的数据不一致问题
+//        Result result = voucherOrderService.seckillVoucher_pessimistic_lock(voucherId);
+        // 2、使用CAS（乐观锁）
+        Result result = voucherOrderService.seckillVoucher_optimistic_lock(voucherId);
         log.info("秒杀券下单【controller】【end】");
         return result;
     }
