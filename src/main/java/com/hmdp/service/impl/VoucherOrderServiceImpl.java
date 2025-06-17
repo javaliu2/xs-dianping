@@ -362,7 +362,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         // 获取锁对象
         ILock lock = new SimpleRedisLock(name, stringRedisTemplate);
         // 尝试加锁
-        boolean isSuccess = lock.tryLock(10);// 超时时间要大于具体业务执行时间
+        boolean isSuccess = lock.tryLock(1000);// 超时时间要大于具体业务执行时间
         if (!isSuccess) {
             return Result.fail("同一用户不允许重复下单");
         }
