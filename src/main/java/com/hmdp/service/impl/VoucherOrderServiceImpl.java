@@ -278,7 +278,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         // 5、一人一单逻辑
         Long userId = UserHolder.getUser().getId();
         Integer count = query().eq("user_id", userId).eq("voucher_id", voucherId).count();
-        log.info("count: {}", count);  // 为0
+        log.info("count: {}", count);  // 为0或1
         if (count > 0) {
             return Result.fail("用户已经购买过一次");
         }
