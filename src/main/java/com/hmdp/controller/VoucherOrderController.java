@@ -34,8 +34,10 @@ public class VoucherOrderController {
 //        Result result = voucherOrderService.seckillVoucher_pessimistic_lock(voucherId);
         // 2、使用CAS（乐观锁）
 //        Result result = voucherOrderService.seckillVoucher_optimistic_lock(voucherId);
-        // 3、一人一单功能
-        Result result = voucherOrderService.seckillVoucher_one_user_one_order_syn_block_final(voucherId);
+        // 3、一人一单功能(synchronized锁)
+//        Result result = voucherOrderService.seckillVoucher_one_user_one_order_syn_block_final(voucherId);
+        // 4、分布式锁（redis实现）
+        Result result = voucherOrderService.seckillVoucher_redis_lock(voucherId);
         log.info("秒杀券下单【controller】【end】");
         return result;
     }
