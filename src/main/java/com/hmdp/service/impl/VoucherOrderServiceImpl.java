@@ -12,6 +12,8 @@ import com.hmdp.utils.RedisIdWorker;
 import com.hmdp.utils.SimpleRedisLock;
 import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.aop.framework.AopContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -41,6 +43,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
+
+    @Autowired
+    private RedissonClient redissonClient;
 
     @Override
     public Result seckillVoucher(Long voucherId) {
@@ -371,6 +376,44 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return proxy.createVoucherOrder_final(voucherId);
         } finally {
             lock.unlock();  // 主动释放锁
+        }
+    }
+
+    @Override
+    public Result seckillVoucher_redisson(Long voucherId) {
+        // 1、查询秒杀券
+        SeckillVoucher seckillVoucher = seckillVoucherService.getById(voucherId);
+        // 2、判断秒杀是否开始
+        LocalDateTime beginTime = seckillVoucher.getBeginTime();
+        if (beginTime.isAfter(LocalDateTime.now())) {
+            return Result.fail("秒杀未开始");
+        }
+        // 3、判断秒杀是否结束
+        LocalDateTime endTime = seckillVoucher.getEndTime();
+        if (endTime.isBefore(LocalDateTime.now())) {
+            return Result.fail("秒杀已结束");
+        }
+        // 4、判断库存是否充足
+        Integer stock = seckillVoucher.getStock();
+        if (stock <= 0) {
+            return Result.fail("库存不足");
+        }
+
+        Long userId = UserHolder.getUser().getId();
+        // 需要手动获取锁 和 释放锁
+        String name = "secKillOrder:" + userId;
+        // 获取锁对象
+        RLock lock = redissonClient.getLock(name);  // name指定锁的名称
+        // 尝试加锁
+        boolean isSuccess = lock.tryLock();  // 不重复，默认30s过期
+        if (!isSuccess) {
+            return Result.fail("同一用户不允许重复下单");
+        }
+        try {
+            IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
+            return proxy.createVoucherOrder_final(voucherId);
+        } finally {
+            lock.unlock();  // 释放锁
         }
     }
 }
