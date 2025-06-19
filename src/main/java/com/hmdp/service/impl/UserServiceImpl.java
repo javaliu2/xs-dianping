@@ -10,6 +10,7 @@ import com.hmdp.entity.User;
 import com.hmdp.mapper.UserMapper;
 import com.hmdp.service.IUserService;
 import com.hmdp.utils.RegexUtils;
+import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -130,7 +131,14 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         user.setPhone(phone);
         user.setNickName(USER_NICK_NAME_PREFIX + RandomUtil.randomNumbers(6));
         // 2、保存用户对象
+        log.info("未save前，user.id: ", user.getId());
         save(user);
+        log.info("save后，user.id: ", user.getId());
         return user;
+    }
+
+    @Override
+    public void logout() {
+        
     }
 }
