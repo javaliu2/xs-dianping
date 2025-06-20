@@ -1,6 +1,7 @@
 package com.hmdp.service.impl;
 
 import cn.hutool.core.util.RandomUtil;
+import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.constant.MessageConstant;
 import com.hmdp.dto.LoginFormDTO;
@@ -9,13 +10,17 @@ import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.User;
 import com.hmdp.mapper.UserMapper;
 import com.hmdp.service.IUserService;
+import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.RegexUtils;
 import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
+import javax.servlet.http.HttpServletRequest;
 import java.beans.BeanInfo;
 import java.beans.Introspector;
 import java.beans.PropertyDescriptor;
@@ -131,14 +136,38 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         user.setPhone(phone);
         user.setNickName(USER_NICK_NAME_PREFIX + RandomUtil.randomNumbers(6));
         // 2、保存用户对象
-        log.info("未save前，user.id: ", user.getId());
+        log.info("未save前，user.id: {}", user.getId());  // 未save前，user.id: null
         save(user);
-        log.info("save后，user.id: ", user.getId());
+        log.info("save后，user.id: {}", user.getId());  // save后，user.id: 1073
         return user;
     }
 
     @Override
     public void logout() {
-        
+        // 获取当前用户
+        UserDTO userDTO = UserHolder.getUser();
+        if (userDTO == null) {
+            log.warn("登出失败：当前用户为空");
+            return;
+        }
+
+        // 获取请求上下文中的 token（如果你没从 controller 传 token 进来，这里用 request 提取）
+        ServletRequestAttributes requestAttributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+        if (requestAttributes == null) return;
+
+        HttpServletRequest request = requestAttributes.getRequest();
+        String token = request.getHeader("Authorization");
+        if (StrUtil.isBlank(token)) {
+            log.warn("登出失败：token 为空");
+            return;
+        }
+
+        // 构造 Redis key 并删除
+        String redisKey = LOGIN_USER_KEY + token;
+        stringRedisTemplate.delete(redisKey);
+
+        // 清除 ThreadLocal 中的用户
+        UserHolder.removeUser();
+        log.info("登出成功，token: {}", token);
     }
 }
