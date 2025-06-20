@@ -39,7 +39,9 @@ public class VoucherOrderController {
         // 4、分布式锁（redis实现）
 //        Result result = voucherOrderService.seckillVoucher_redis_lock(voucherId);
         // 5、分布式锁（redisson提供）
-        Result result = voucherOrderService.seckillVoucher_redisson(voucherId);
+//        Result result = voucherOrderService.seckillVoucher_redisson(voucherId);
+        // 6、秒杀下单优化（使用lua脚本+阻塞队列实现异步下单）
+        Result result = voucherOrderService.seckillVoucher_asyn_order(voucherId);
         log.info("秒杀券下单【controller】【end】");
         return result;
     }

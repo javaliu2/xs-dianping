@@ -21,6 +21,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * 自动化生成1000个用户token
@@ -149,5 +150,28 @@ public class ProductBatchUserToken {
         // 4、将tokens写入文件
         Path file = Paths.get("tokens2");
         Files.write(file, tokens);
+    }
+
+    /**
+     * 删除redis中批量插入的token
+     */
+    @Test
+    void deleteBatchToken() throws IOException {
+        // 1. 读取 token 文件中的所有 token
+        String path = "/home/xs/basic_skill/dianping/xs-dianping/tokens2";
+        List<String> tokens = Files.readAllLines(Paths.get(path))
+                .stream()
+                .map(String::trim)
+                .filter(token -> !token.isEmpty())
+                .collect(Collectors.toList());
+
+        // 2. 拼接 Redis key
+        List<String> redisKeys = tokens.stream()
+                .map(token -> RedisConstants.LOGIN_USER_KEY + token)
+                .collect(Collectors.toList());
+
+        // 3. 删除 Redis 中对应的 key
+        Long deleted = stringRedisTemplate.delete(redisKeys);
+        System.out.println("成功删除 Redis 中的 token key 数量: " + deleted);
     }
 }

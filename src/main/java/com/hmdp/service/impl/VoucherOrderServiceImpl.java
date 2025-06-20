@@ -2,6 +2,7 @@ package com.hmdp.service.impl;
 
 import com.hmdp.dto.Result;
 import com.hmdp.entity.SeckillVoucher;
+import com.hmdp.entity.User;
 import com.hmdp.entity.VoucherOrder;
 import com.hmdp.mapper.VoucherOrderMapper;
 import com.hmdp.service.ISeckillVoucherService;
@@ -16,12 +17,15 @@ import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.aop.framework.AopContext;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 import java.time.LocalDateTime;
+import java.util.Collections;
 
 /**
  * <p>
@@ -415,5 +419,39 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         } finally {
             lock.unlock();  // 释放锁
         }
+    }
+
+    private static final DefaultRedisScript<Long> SECKILL_SCRIPT;
+    static {
+        SECKILL_SCRIPT = new DefaultRedisScript<>();
+        // 使用Spring提供的ClassPathResource读取类路径下的文件
+        SECKILL_SCRIPT.setLocation(new ClassPathResource("seckill.lua"));
+        SECKILL_SCRIPT.setResultType(Long.class);
+    }
+    /**
+     * 秒杀业务优化，异步下单
+     * @param voucherId
+     * @return
+     */
+    @Override
+    public Result seckillVoucher_asyn_order(Long voucherId) {
+        // 0. 获取用户id，生成订单id
+        Long userId = UserHolder.getUser().getId();
+        long orderId = redisIdWorker.nextId("order");
+        // 1. 执行lua脚本
+        Long result = stringRedisTemplate.execute(
+                SECKILL_SCRIPT,
+                Collections.emptyList(),
+                voucherId.toString(), userId.toString()
+        );
+        // 2. 判断返回结果
+        int r = result.intValue();
+        if (r != 0) {
+            return Result.fail(r == 1 ? "库存不足" : "同一用户不允许重复下单");
+        }
+        // 3. 将下单信息保存到阻塞队列
+
+        // 4. 返回订单id给前端
+        return Result.ok(orderId);
     }
 }
