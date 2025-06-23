@@ -23,9 +23,12 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
 import java.time.LocalDateTime;
 import java.util.Collections;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 
 /**
  * <p>
@@ -421,12 +424,62 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         }
     }
 
+    // 异步下单使用到的成员变量
     private static final DefaultRedisScript<Long> SECKILL_SCRIPT;
     static {
         SECKILL_SCRIPT = new DefaultRedisScript<>();
         // 使用Spring提供的ClassPathResource读取类路径下的文件
         SECKILL_SCRIPT.setLocation(new ClassPathResource("seckill.lua"));
         SECKILL_SCRIPT.setResultType(Long.class);
+    }
+    private static final BlockingQueue<VoucherOrder> orderQueue = new ArrayBlockingQueue<>(1024);
+    private IVoucherOrderService proxy;
+    @PostConstruct
+    public void init() {
+        // 异步线程，读取orderQueue订单，完成下单的操作
+        // 启动线程消费队列中的订单
+        Thread thread = new Thread(()->{
+            while (true) {
+                try {
+                    VoucherOrder order = orderQueue.take();
+                    handleOrder(order);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        });
+        thread.start();
+    }
+
+    private void handleOrder(VoucherOrder order) {
+        proxy.createVoucherOrder_asyn_order(order);
+    }
+
+    @Transactional
+    public void createVoucherOrder_asyn_order(VoucherOrder order) {
+        // 1. 一人一单校验（数据库）
+        Long userId = order.getUserId();  // 从order获取userId，而不能是UserHolder
+        int count = query().eq("user_id", userId)
+                .eq("voucher_id", order.getVoucherId())
+                .count();
+        if (count > 0) {
+            log.error("用户已经购买过一次！");
+            return;
+        }
+
+        // 2. 扣减库存(这里是seckillVoucherService的update，如果不写就是VoucherOrderService的update，会报错)
+        boolean success = seckillVoucherService.update()
+                .setSql("stock = stock - 1")
+                .eq("voucher_id", order.getVoucherId())
+                .gt("stock", 0)
+                .update();
+        if (!success) {
+            log.error("库存不足！");
+            return;
+        }
+
+        // 3. 保存订单
+        save(order);
     }
     /**
      * 秒杀业务优化，异步下单
@@ -450,7 +503,15 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return Result.fail(r == 1 ? "库存不足" : "同一用户不允许重复下单");
         }
         // 3. 将下单信息保存到阻塞队列
-
+        // 3.1 创建订单
+        VoucherOrder voucherOrder = new VoucherOrder();
+        voucherOrder.setUserId(userId);
+        voucherOrder.setVoucherId(voucherId);
+        voucherOrder.setId(orderId);
+        // 3.2 加入阻塞队列
+        orderQueue.add(voucherOrder);
+        // 3.3 获取Spring事务代理对象，供异步线程使用
+        proxy = (IVoucherOrderService)AopContext.currentProxy();
         // 4. 返回订单id给前端
         return Result.ok(orderId);
     }
