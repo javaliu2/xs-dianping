@@ -10,6 +10,7 @@
 
 local voucherId = ARGV[1]  -- 秒杀券id
 local userId = ARGV[2]
+local orderId = ARGV[3]
 local stockKey = "seckill:stock:" .. voucherId
 local orderKey = "seckill:order:" .. voucherId
 
@@ -24,5 +25,8 @@ end
 -- 3. 库存充足且是第一次下单
 redis.call('incrby', stockKey, -1)
 redis.call('sadd', orderKey, userId)
+-- 4. 将下单信息加入消息队列 xadd stream.orders * "voucherId" voucherId "userId" userId "orderId" orderId
+-- 这里orderId为什么写成id，是为了将来取出的时候，方便对VoucherOrder进行属性注入
+redis.call('xadd', 'stream.orders', '*', "voucherId", voucherId, "userId", userId, "id", orderId)
 return 0
 
