@@ -1,6 +1,10 @@
 package com.hmdp;
 
 import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.hmdp.entity.User;
+import com.hmdp.service.IUserService;
 import com.hmdp.utils.RedisConstants;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
 import org.apache.hc.client5.http.entity.UrlEncodedFormEntity;
@@ -22,6 +26,8 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
+
+import static com.hmdp.utils.RedisConstants.LOGIN_USER_KEY;
 
 /**
  * 自动化生成1000个用户token
@@ -151,7 +157,9 @@ public class ProductBatchUserToken {
         Path file = Paths.get("tokens2");
         Files.write(file, tokens);
     }
-
+    // 没有注入，报null
+    @Autowired
+    private IUserService userService;
     /**
      * 删除redis中批量插入的token
      */
@@ -167,10 +175,27 @@ public class ProductBatchUserToken {
 
         // 2. 拼接 Redis key
         List<String> redisKeys = tokens.stream()
-                .map(token -> RedisConstants.LOGIN_USER_KEY + token)
+                .map(token -> LOGIN_USER_KEY + token)
                 .collect(Collectors.toList());
-
-        // 3. 删除 Redis 中对应的 key
+        // 3. 删除数据库中tb_user表数据
+        // 操作的是hash类型的值，所以对应的命令式 hget key field
+//        List<Long> ids = new ArrayList<>();
+//        每次请求都是一个连接，配置文件中max-active是10，所以报错io.lettuce.core.RedisException: Connection closed
+//        for (String key : redisKeys) {
+//            String id_str = (String) stringRedisTemplate.opsForHash().get(key, "id");
+//            assert id_str != null;
+//            ids.add(Long.parseLong(id_str));
+//        }
+//        userService.removeByIds(ids);
+        // 获取第一个插入用户的id和最后一个用户的id，因为插入的数据用户id是递增的，所以可以使用两个数，确定插入id的区间
+        String key_begin = redisKeys.get(0), key_end = redisKeys.get(redisKeys.size() - 1);
+        String id_begin_str = (String) stringRedisTemplate.opsForHash().get(key_begin, "id");
+        String id_end_str = (String) stringRedisTemplate.opsForHash().get(key_end, "id");
+        Long id_begin = Long.parseLong(id_begin_str), id_end = Long.parseLong(id_end_str);
+        QueryWrapper<User> wrapper = new QueryWrapper<>();
+        wrapper.between("id", id_begin, id_end);
+        userService.remove(wrapper);
+        // 4. 删除 Redis 中对应的 key
         Long deleted = stringRedisTemplate.delete(redisKeys);
         System.out.println("成功删除 Redis 中的 token key 数量: " + deleted);
     }

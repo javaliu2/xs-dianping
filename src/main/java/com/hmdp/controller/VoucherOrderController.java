@@ -43,10 +43,10 @@ public class VoucherOrderController {
         // 6、秒杀下单优化（使用lua脚本+阻塞队列实现异步下单）
 //        Result result = voucherOrderService.seckillVoucher_asyn_order(voucherId);
         // 7、秒杀下单优化（使用redis stream消息队列代替JVM阻塞队列）
-        log.info("线程唯一标识：ID={}, 名称={}, 对象哈希={}",
-                Thread.currentThread().getId(),
-                Thread.currentThread().getName(),
-                System.identityHashCode(Thread.currentThread()));
+//        log.info("线程唯一标识：ID={}, 名称={}, 对象哈希={}",
+//                Thread.currentThread().getId(),
+//                Thread.currentThread().getName(),
+//                System.identityHashCode(Thread.currentThread()));
         Result result = voucherOrderService.seckillVoucher_redis_stream(voucherId);
         log.info("秒杀券下单【controller】【end】");
         return result;
