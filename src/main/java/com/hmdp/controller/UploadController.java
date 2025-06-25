@@ -60,4 +60,10 @@ public class UploadController {
         // 生成文件名
         return StrUtil.format("/blogs/{}/{}/{}.{}", d1, d2, name, suffix);
     }
+
+    public static void main(String[] args) {
+        UploadController o = new UploadController();
+        String name = o.createNewFileName("/home/xs/Pictures/a.png");
+        System.out.println(name);
+    }
 }

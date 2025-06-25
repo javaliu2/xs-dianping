@@ -576,11 +576,11 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                     MapRecord<String, Object, Object> message = messages.get(0);
                     Map<Object, Object> value = message.getValue();
                     VoucherOrder voucherOrder = BeanUtil.fillBeanWithMap(value, new VoucherOrder(), true);
-                    log.info("创建订单: {}", voucherOrder);
-                    log.info("线程唯一标识：ID={}, 名称={}, 对象哈希={}",
-                            Thread.currentThread().getId(),
-                            Thread.currentThread().getName(),
-                            System.identityHashCode(Thread.currentThread()));
+//                    log.info("创建订单: {}", voucherOrder);
+//                    log.info("线程唯一标识：ID={}, 名称={}, 对象哈希={}",
+//                            Thread.currentThread().getId(),
+//                            Thread.currentThread().getName(),
+//                            System.identityHashCode(Thread.currentThread()));
 
                     handleOrder(voucherOrder);
                     // 4、对消息确认，XACK stream.orders g1 <id>
