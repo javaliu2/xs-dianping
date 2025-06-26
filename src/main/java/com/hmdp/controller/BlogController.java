@@ -76,4 +76,16 @@ public class BlogController {
         Blog blog = blogService.getBlog(id);
         return Result.ok(blog);
     }
+
+    /**
+     * 每篇博客点赞查询前五名
+     * @param id
+     * @return
+     */
+    @GetMapping("likes/{id}")
+    public Result likesTop5(@PathVariable(name="id") Long id) {
+        log.info("获取id为{}博文的点赞前五名", id);
+        Object data = blogService.getLikesTop5(id);
+        return Result.ok(data);
+    }
 }
