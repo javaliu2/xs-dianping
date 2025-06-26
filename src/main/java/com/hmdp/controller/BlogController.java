@@ -10,6 +10,7 @@ import com.hmdp.service.IBlogService;
 import com.hmdp.service.IUserService;
 import com.hmdp.utils.SystemConstants;
 import com.hmdp.utils.UserHolder;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
@@ -25,6 +26,7 @@ import java.util.List;
  */
 @RestController
 @RequestMapping("/blog")
+@Slf4j
 public class BlogController {
 
     @Resource
@@ -45,9 +47,8 @@ public class BlogController {
 
     @PutMapping("/like/{id}")
     public Result likeBlog(@PathVariable("id") Long id) {
-        // 修改点赞数量
-        blogService.update()
-                .setSql("liked = liked + 1").eq("id", id).update();
+        log.info("给id为{}的博文点赞", id);
+        blogService.likeBlog(id);
         return Result.ok();
     }
 
@@ -65,19 +66,14 @@ public class BlogController {
 
     @GetMapping("/hot")
     public Result queryHotBlog(@RequestParam(value = "current", defaultValue = "1") Integer current) {
-        // 根据用户查询
-        Page<Blog> page = blogService.query()
-                .orderByDesc("liked")
-                .page(new Page<>(current, SystemConstants.MAX_PAGE_SIZE));
-        // 获取当前页数据
-        List<Blog> records = page.getRecords();
-        // 查询用户
-        records.forEach(blog ->{
-            Long userId = blog.getUserId();
-            User user = userService.getById(userId);
-            blog.setName(user.getNickName());
-            blog.setIcon(user.getIcon());
-        });
-        return Result.ok(records);
+        log.info("查询第{}页的博文", current);
+        Object data = blogService.queryHotBlog(current);
+        return Result.ok(data);
+    }
+
+    @GetMapping("/{id}")
+    public Result viewBlog(@PathVariable(name="id") Long id) {
+        Blog blog = blogService.getBlog(id);
+        return Result.ok(blog);
     }
 }

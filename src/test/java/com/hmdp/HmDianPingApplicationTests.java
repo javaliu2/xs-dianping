@@ -21,7 +21,9 @@ class HmDianPingApplicationTests {
 
     @Test
     public void testShop2Redis() throws InterruptedException {
-        shopService.saveShop2Redis(1L, 10L);
+        for (long i = 1; i <= 14; ++i) {
+            shopService.saveShop2Redis(i, 10L);
+        }
     }
     private ExecutorService es = Executors.newFixedThreadPool(500);
     @Test
