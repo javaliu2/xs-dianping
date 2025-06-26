@@ -35,4 +35,11 @@ public class FollowController {
         boolean flag = followService.isFollow(id);
         return Result.ok(flag);
     }
+
+    @GetMapping("/common/{id}")
+    public Result getCommonFollow(@PathVariable("id") Long id) {
+        log.info("获取网页用户id:{}和登录用户共同关注用户列表", id);
+        Object data = followService.getCommonFollow(id);
+        return Result.ok(data);
+    }
 }

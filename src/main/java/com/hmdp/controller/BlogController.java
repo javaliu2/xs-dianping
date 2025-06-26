@@ -88,4 +88,13 @@ public class BlogController {
         Object data = blogService.getLikesTop5(id);
         return Result.ok(data);
     }
+
+    @GetMapping("/of/user")
+    public Result queryBlogByUserId(@RequestParam(value = "current", defaultValue = "1") Integer current,
+                                    @RequestParam("id") Long id) {
+
+        Page<Blog> pages = blogService.query().eq("user_id", id).page(new Page<>(current, SystemConstants.MAX_PAGE_SIZE));
+        List<Blog> records = pages.getRecords();
+        return Result.ok(records);
+    }
 }
