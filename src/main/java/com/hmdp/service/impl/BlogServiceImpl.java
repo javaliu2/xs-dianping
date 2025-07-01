@@ -6,10 +6,12 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
+import com.hmdp.entity.Follow;
 import com.hmdp.entity.User;
 import com.hmdp.mapper.BlogMapper;
 import com.hmdp.service.IBlogService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.hmdp.service.IFollowService;
 import com.hmdp.service.IUserService;
 import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.SystemConstants;
@@ -36,6 +38,9 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
 
     @Autowired
     private IUserService userService;
+
+    @Autowired
+    private IFollowService followService;
 
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
@@ -104,5 +109,40 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
                 .map(user -> BeanUtil.copyProperties(user, UserDTO.class))
                 .collect(Collectors.toList());
         return userDTOS;
+    }
+
+    /**
+     * 1、保存博文到数据库
+     * 2、保存博文id到当前用户的所有粉丝的收件箱中
+     * @param blog
+     * @return
+     */
+    @Override
+    public Long saveBlog(Blog blog) {
+        // 获取登录用户
+        UserDTO user = UserHolder.getUser();
+        Long userId = user.getId();
+        blog.setUserId(userId);
+        // 保存探店博文
+        boolean isSuccess = save(blog);
+        if (!isSuccess) {
+            return null;
+        }
+        Long blogId = blog.getId();
+        // select * from tb_follow where follow_id = currentUserId
+        List<Follow> follows = followService.query().eq("follow_user_id", userId).list();
+        if (follows != null && follows.size() > 0) {
+            // 给每一个粉丝推送博文
+            for (Follow follow : follows) {
+                String key = RedisConstants.FEED_KEY + follow.getUserId();
+                stringRedisTemplate.opsForZSet().add(key, blogId.toString(), System.currentTimeMillis());
+            }
+        }
+        return blogId;
+    }
+
+    @Override
+    public Object getBlogOfFollowing(Long max, Integer offset) {
+        return null;
     }
 }
