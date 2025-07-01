@@ -87,7 +87,11 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         blog.setIcon(user.getIcon());
 
         String key = RedisConstants.BLOG_LIKED_KEY + blog.getId();
-        Double score = stringRedisTemplate.opsForZSet().score(key, String.valueOf(userId));
+        // 这里写的有问题
+        // 后面的userId应该是当前用户的id，这里的话是发表 博文的用户id，显然是不对的
+        // 由此可知，有语义的变量命名是很有必要的
+        Long currentUserId = UserHolder.getUser().getId();
+        Double score = stringRedisTemplate.opsForZSet().score(key, String.valueOf(currentUserId));
         blog.setIsLike(score != null);
     }
 
