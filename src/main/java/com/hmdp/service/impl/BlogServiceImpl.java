@@ -4,6 +4,7 @@ import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.dto.Result;
+import com.hmdp.dto.ScrollResult;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
 import com.hmdp.entity.Follow;
@@ -18,11 +19,10 @@ import com.hmdp.utils.SystemConstants;
 import com.hmdp.utils.UserHolder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Service;
 
-import java.util.Collections;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -143,6 +143,40 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
 
     @Override
     public Object getBlogOfFollowing(Long max, Integer offset) {
-        return null;
+        // 1、获取当前用户
+        Long userId = UserHolder.getUser().getId();
+        // 2、分页查询博文
+        String key = RedisConstants.FEED_KEY + userId;
+        // 3、根据博文id查询博文 zrevrangebyscore key max min limit offset count
+        Set<ZSetOperations.TypedTuple<String>> typedTuples = stringRedisTemplate.opsForZSet().
+                reverseRangeByScoreWithScores(key, 0, max, offset, 2);
+        if (typedTuples == null || typedTuples.isEmpty()) {
+            return null;
+        }
+        List<Long> ids = new ArrayList<>(typedTuples.size());  // 显式定义arraylist大小避免元素个数大于默认值导致扩容拷贝的开销
+        // 4、计算最小时间戳minTime及其个数
+        long minTime = 0;
+        int cnt = 1;
+        for (ZSetOperations.TypedTuple<String> tuple : typedTuples) {
+            ids.add(Long.valueOf(Objects.requireNonNull(tuple.getValue())));
+            long time = Objects.requireNonNull(tuple.getScore()).longValue();
+            if (minTime == time) {
+                cnt++;
+            } else {
+                minTime = time;
+                cnt = 1;
+            }
+        }
+        // 5、根据id查询博文
+        String idStr = StrUtil.join(",", ids);
+        List<Blog> blogs = query().in("id", ids).last("ORDER BY FIELD(id, " + idStr + ")").list();
+        // 6、填充博文其他字段
+        blogs.forEach(this::fillOtherField);
+        // 7、封装数据返回
+        ScrollResult sr = new ScrollResult();
+        sr.setList(blogs);
+        sr.setOffset(cnt);
+        sr.setMinTime(minTime);
+        return sr;
     }
 }

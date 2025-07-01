@@ -101,7 +101,7 @@ public class BlogController {
      * 获取当前用户关注的所有用户发表的探店博文
      * @return
      */
-    @GetMapping("blog/of/follow")
+    @GetMapping("/of/follow")
     public Result getBlogOfFollowing(@RequestParam("lastId") Long max, @RequestParam(value = "offset", defaultValue = "0") Integer offset) {
         log.info("获取当前用户关注的所有用户发表的博文");
         Object data = blogService.getBlogOfFollowing(max, offset);
