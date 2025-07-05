@@ -4,6 +4,7 @@ import cn.hutool.core.util.BooleanUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.constant.MessageConstant;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.Shop;
@@ -12,16 +13,24 @@ import com.hmdp.service.IShopService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.RedisData;
+import com.hmdp.utils.SystemConstants;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.geo.*;
+import org.springframework.data.redis.connection.RedisGeoCommands;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * <p>
@@ -228,5 +237,56 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         // 2、删除缓存
         stringRedisTemplate.delete(RedisConstants.CACHE_SHOP_KEY + id);
         return Result.ok();
+    }
+
+    @Override
+    public Object queryShopByType(Integer typeId, Integer current, Double x, Double y) {
+        // 1、判断前端是否传递了x和y
+        if (x == null || y == null) {
+            // 1.1 没有传递，就是普通的分页查询
+            Page<Shop> page = query()
+                    .eq("type_id", typeId)
+                    .page(new Page<>(current, SystemConstants.DEFAULT_PAGE_SIZE));
+            return page.getRecords();
+        }
+        // 1.2 否则是带有地理坐标的查询
+        // 2、使用redis命令，georadius key longitude latitude radius m|km|ft|mi WITHDIST COUNT ?
+        // 2.1 需要自己实现计算分页的参数，分别是start和end
+        // georadius不支持区间查询，故查询end条数据，跳过前start，以达到区间查询的目的
+        int start = (current - 1) * SystemConstants.DEFAULT_PAGE_SIZE;
+        int end = current * SystemConstants.DEFAULT_PAGE_SIZE;
+        String key = RedisConstants.SHOP_GEO_KEY + typeId;
+        // 查询key为键的地理集合中，Circle确定的圆心为Point，距离小于Distance的地理entry
+        // 返回结果包括距离信息，且只查询前end条记录
+        GeoResults<RedisGeoCommands.GeoLocation<String>> shopGeo = stringRedisTemplate.opsForGeo().radius(key, new Circle(new Point(x, y), new Distance(5000)), RedisGeoCommands.GeoRadiusCommandArgs.newGeoRadiusArgs().includeDistance().limit(end));
+        if (shopGeo == null) {
+            return null;
+        }
+        // RedisGeoCommands.GeoLocation<String>就是(member, longitude, latitude)
+        // GeoResult除了以上content，还包括distance
+        // 存在多个符合条件的entry，故是List
+        List<GeoResult<RedisGeoCommands.GeoLocation<String>>> contents = shopGeo.getContent();
+        // 跳过start个元素，就没有数据了，故返回null
+        if (contents.size() <= start) {
+            return null;
+        }
+        List<Long> ids = new ArrayList<>();
+        Map<Long, Double> distanceMap = new HashMap<>();
+        contents.stream().skip(start).forEach(result -> {
+            RedisGeoCommands.GeoLocation<String> content = result.getContent();
+            Long shopId = Long.valueOf(content.getName());
+            ids.add(shopId);  // 商铺id
+            double value = result.getDistance().getValue();  // 与(x, y)的距离
+            distanceMap.put(shopId, value);
+        }
+        );
+        // 3、查询数据库获得以上商铺的全部信息
+        String idStr = StrUtil.join(",", ids);
+//        System.out.println(idStr);  // 2,9,8,3,6
+        // 使用order by field(field_name)保证数据库查询出的结果和ids顺序一致
+        List<Shop> shops = query().in("id", ids).last("ORDER BY FIELD(id," + idStr + ")").list();
+        // 3.1 填充shop的distance属性
+        shops.forEach(shop -> shop.setDistance(distanceMap.get(shop.getId())));
+        return shops;
     }
 }

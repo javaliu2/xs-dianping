@@ -2,10 +2,13 @@ package com.hmdp;
 
 import com.hmdp.entity.Shop;
 import com.hmdp.service.impl.ShopServiceImpl;
+import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.RedisIdWorker;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.geo.Point;
+import org.springframework.data.redis.connection.RedisGeoCommands;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.util.ArrayList;
@@ -15,6 +18,7 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 @SpringBootTest
 class HmDianPingApplicationTests {
@@ -63,20 +67,33 @@ class HmDianPingApplicationTests {
         // 1、从数据库查询店铺数据
         List<Shop> shops = shopService.list();  // 查询所有，select * from tb_shop
         // 2、将数据按照typeId分组
-        Map<Long, List<Shop>> groups = new HashMap<>();
-        for (Shop shop : shops) {
-            Long typeId = shop.getTypeId();
-            if (groups.get(typeId) == null) {
-                List<Shop> arr = new ArrayList<>();
-                arr.add(shop);
-                groups.put(typeId, arr);
-            } else {
-                groups.get(typeId).add(shop);
-            }
-        }
-        System.out.println(groups);
+        // My Implementation
+//        Map<Long, List<Shop>> groups = new HashMap<>();
+//        for (Shop shop : shops) {
+//            Long typeId = shop.getTypeId();
+//            if (groups.get(typeId) == null) {
+//                List<Shop> arr = new ArrayList<>();
+//                arr.add(shop);
+//                groups.put(typeId, arr);
+//            } else {
+//                groups.get(typeId).add(shop);
+//            }
+//        }
+//        System.out.println(groups);
+        Map<Long, List<Shop>> collect = shops.stream().collect(Collectors.groupingBy(Shop::getTypeId));
         // 3、构造写入对象
-
-        // 4、批量写入
+        for (Map.Entry<Long, List<Shop>> coll : collect.entrySet()){
+            Long typeId = coll.getKey();
+            List<Shop> shopList = coll.getValue();
+            String key = RedisConstants.SHOP_GEO_KEY + typeId;
+            List<RedisGeoCommands.GeoLocation<String>> locations = new ArrayList<>();
+            for (Shop shop : shopList) {
+                locations.add(new RedisGeoCommands.GeoLocation<>(shop.getId().toString(),
+                        new Point(shop.getX(), shop.getY())
+                ));
+            }
+            // 4、按照typeId批量写入
+            stringRedisTemplate.opsForGeo().add(key, locations);
+        }
     }
 }
