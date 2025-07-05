@@ -19,6 +19,8 @@ import org.redisson.api.RedissonClient;
 import org.springframework.aop.framework.AopContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.data.redis.RedisConnectionFailureException;
+import org.springframework.data.redis.RedisSystemException;
 import org.springframework.data.redis.connection.stream.*;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -26,6 +28,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
 import javax.annotation.Resource;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -558,7 +561,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         String streamName = "stream.orders";
         // 启动线程消费消息队列中的订单
         Thread thread = new Thread(() -> {
-            while (true) {
+            while (running) {
                 try {
                     // 1、读取消息队列中的下单信息 XREADGROUP GROUP g1 c1 COUNT 1 BLOCK 2000 STREAMS stream.orders
                     // ReadOffset.latest()返回'$'，这是在创建组的时候使用的，而不是XREADGROUP的时候，
@@ -585,6 +588,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                     handleOrder(voucherOrder);
                     // 4、对消息确认，XACK stream.orders g1 <id>
                     stringRedisTemplate.opsForStream().acknowledge(streamName, "g1", message.getId());
+                } catch (RedisConnectionFailureException | RedisSystemException e) {
+                    log.warn("Redis连接异常，终止线程：{}", e.getMessage());
                 } catch (Exception e) {
                     log.error("处理消息异常", e);
                     handlePendingList(streamName);
@@ -593,7 +598,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         }, "handle_stream");
         thread.start();
     }
-
     private void handlePendingList(String streamName) {
         while (true) {
             try {
@@ -623,5 +627,17 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 }
             }
         }
+    }
+
+    /**
+     * 为解决Spring容器退出，关闭了redis连接，但是用户线程handle_stream继续运行报错的问题
+     */
+    private volatile boolean running = true;
+    public void stop() {
+        running = false;
+    }
+    @PreDestroy
+    public void destroy() {
+        stop();
     }
 }
