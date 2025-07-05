@@ -20,4 +20,8 @@ public interface IBlogService extends IService<Blog> {
     Object queryHotBlog(Integer current);
 
     Object getLikesTop5(Long id);
+
+    Long saveBlog(Blog blog);
+
+    Object getBlogOfFollowing(Long max, Integer offset);
 }
