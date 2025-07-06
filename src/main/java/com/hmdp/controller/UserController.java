@@ -99,4 +99,27 @@ public class UserController {
         UserDTO userDTO = BeanUtil.copyProperties(user, UserDTO.class);
         return Result.ok(userDTO);
     }
+
+    /**
+     * 前端不传递任何参数，但是为什么还是要使用post方法请求
+     * 答：方法具有语义，表明这次请求对后端数据有修改
+     * @return
+     */
+    @PostMapping("/sign")
+    public Result signIn() {
+        log.info("用户签到");
+        userService.signIn();
+        return Result.ok();
+    }
+
+    /**
+     * 获取当前用户截止当前日期（包括今天）的连续签到天数
+     * @return
+     */
+    @GetMapping("/sign/count")
+    public Result getContinueSignDays() {
+        log.info("获取连续签到天数");
+        Object data = userService.getContinueSignDays();
+        return Result.ok(data);
+    }
 }

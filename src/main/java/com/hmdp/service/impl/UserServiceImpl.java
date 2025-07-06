@@ -15,6 +15,7 @@ import com.hmdp.utils.RegexUtils;
 import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.connection.BitFieldSubCommands;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.context.request.RequestContextHolder;
@@ -24,7 +25,10 @@ import javax.servlet.http.HttpServletRequest;
 import java.beans.BeanInfo;
 import java.beans.Introspector;
 import java.beans.PropertyDescriptor;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -169,5 +173,49 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         // 清除 ThreadLocal 中的用户
         UserHolder.removeUser();
         log.info("登出成功，token: {}", token);
+    }
+
+    @Override
+    public void signIn() {
+        // 1、获取当前用户
+        Long userId = UserHolder.getUser().getId();
+        // 2、通过redis bitmap保存用户签到信息
+        // tips: 由于redis bitmap底层是string，故其api调用的是opsForValue
+        // 2.1、获取key
+        LocalDateTime now = LocalDateTime.now();
+        String keySuffix = now.format(DateTimeFormatter.ofPattern(":yyyyMM"));
+        String key = USER_SIGN_KEY + userId + keySuffix;
+        // 2.2、这一天是该月中第几天
+        int dayOfMonth = now.getDayOfMonth();
+        // 2.3、设置bitmap
+        stringRedisTemplate.opsForValue().setBit(key, dayOfMonth, true);  // 不去减1，第一位空着
+    }
+
+    @Override
+    public Object getContinueSignDays() {
+        Long userId = UserHolder.getUser().getId();
+        LocalDateTime now = LocalDateTime.now();
+        String keySuffix = now.format(DateTimeFormatter.ofPattern(":yyyyMM"));
+        String key = USER_SIGN_KEY + userId + keySuffix;
+        int dayOfMonth = now.getDayOfMonth();
+        // 获取当前用户本月截止今日的签到数据 bitfield key get type offset
+        // 由于bitfield支持多条子命令，所以返回结果是一个list
+        List<Long> results = stringRedisTemplate.opsForValue().bitField(key,
+                BitFieldSubCommands.create().get(BitFieldSubCommands.BitFieldType.unsigned(dayOfMonth)).valueAt(1));// 索引从1开始查
+        if (results == null || results.isEmpty()) {
+            return null;
+        }
+        // 统计连续签到天数，从最后一天开始查询
+        Long signCount = results.get(0);
+        int count = 0;
+        while (signCount != 0) {
+            if ((signCount & 1) == 1) {
+                count++;
+            } else {
+                break;
+            }
+            signCount >>= 1;
+        }
+        return count;
     }
 }
