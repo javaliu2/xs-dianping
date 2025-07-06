@@ -96,4 +96,27 @@ class HmDianPingApplicationTests {
             stringRedisTemplate.opsForGeo().add(key, locations);
         }
     }
+
+    /**
+     * 向redis插入100万条用户id数据，检查其统计结果以及内存占用率
+     * 统计结果：997593
+     * 未插入之前，redis memory使用：915864 Bytes
+     * 插入之后：930256 Bytes
+     * 930256 - 915864 = 14.05 KBytes
+     */
+    @Test
+    public void testHyperLogLog() {
+        String[] users = new String[1000];
+        int j = 0;
+        for (int i = 0; i < 1000000; i++) {
+            j = i % 1000;
+            users[j] = "user_" + i;
+            if (j == 999) {
+                j = 0;
+                stringRedisTemplate.opsForHyperLogLog().add("hll1", users);
+            }
+        }
+        Long size = stringRedisTemplate.opsForHyperLogLog().size("hll1");
+        System.out.println(size);
+    }
 }
