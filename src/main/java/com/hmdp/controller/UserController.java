@@ -90,6 +90,22 @@ public class UserController {
         return Result.ok(info);
     }
 
+    /**
+     * 更新用户详细信息
+     * 1、bug记录
+     * 1）updateById()方法不会在数据项不存在的情况下将数据insert入数据库
+     * 因为其产生的sql语句是UPDATE tb_user_info SET introduce=? WHERE user_id=?
+     * 当没有该数据项时，where条件判为false，所以更新失败，他也不会insert
+     * 2）数据项不存在就插入，有就更新，应该使用saveOrUpdate()
+     *   原理：首先select，如果查询到结果，那么执行update；否则执行insert
+     */
+    @PostMapping("/info")
+    public Result info(@RequestBody UserInfo userInfo){
+        log.info("保存用户信息：{}", userInfo);
+        boolean isSuccess = userInfoService.saveOrUpdate(userInfo);
+        return Result.ok(isSuccess);
+    }
+
     @GetMapping("/{id}")
     public Result getUser(@PathVariable("id") Long id) {
         User user = userService.getById(id);
