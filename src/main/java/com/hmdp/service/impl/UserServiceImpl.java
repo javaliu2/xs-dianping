@@ -20,11 +20,14 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.servlet.http.HttpServletRequest;
 import java.beans.BeanInfo;
 import java.beans.Introspector;
 import java.beans.PropertyDescriptor;
+import java.io.File;
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
@@ -217,5 +220,44 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
             signCount >>= 1;
         }
         return count;
+    }
+
+    @Override
+    public Object uploadIcon(MultipartFile file) {
+        if (file.isEmpty()) {
+            return null;
+        }
+        String originalFilename = file.getOriginalFilename();  // 就是 图片文件名.type
+//        System.out.println("originalFilename: " + originalFilename);  // originalFilename: 油茶面.jpeg
+        log.info("originalFilename: {}", originalFilename);
+        // 保存到 /var/www/html/hmdp/imgs/icons/
+        String savePath = "/var/www/html/hmdp/imgs/icons/";
+        assert originalFilename != null;
+        String suffix = originalFilename.substring(originalFilename.lastIndexOf('.'));
+        String filename = UUID.randomUUID() + suffix;
+        log.info("new filename: {}", filename);
+        String iconPath = "/imgs/icons/" + filename;
+        File dest = new File(savePath + filename);
+        try {
+            file.transferTo(dest);
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
+        }
+        // 修改UserHolder中的UserDTO对象的icon属性
+        // 有问题。因为下次请求是新的线程，从redis中读取用户信息。
+        // 这次请求的UserHolder虽然修改，但是在下次请求的时候会失效
+        UserDTO userDTO = UserHolder.getUser();
+//        userDTO.setIcon(iconPath);
+        // 修改redis中用户信息缓存
+        String token = UserHolder.getToken();
+        String key = LOGIN_USER_KEY + token;
+        stringRedisTemplate.opsForHash().put(key, "icon", iconPath);
+        // 更新数据库
+        User user = new User();
+        user.setId(userDTO.getId());
+        user.setIcon(iconPath);
+        updateById(user);
+        return iconPath;
     }
 }

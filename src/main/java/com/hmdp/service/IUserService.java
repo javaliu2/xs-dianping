@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.service.IService;
 import com.hmdp.dto.LoginFormDTO;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.User;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.servlet.http.HttpSession;
 
@@ -26,4 +27,6 @@ public interface IUserService extends IService<User> {
     void signIn();
 
     Object getContinueSignDays();
+
+    Object uploadIcon(MultipartFile file);
 }

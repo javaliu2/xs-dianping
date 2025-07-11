@@ -30,6 +30,8 @@ public class RefreshTokenInterceptor implements HandlerInterceptor {
         if (StrUtil.isBlank(token)) {
             return true;
         }
+        // 补丁1，保存token至threadLocal
+        UserHolder.saveToken(token);
         // 2.基于TOKEN获取redis中的用户
         String key = LOGIN_USER_KEY + token;
         Map<Object, Object> userMap = stringRedisTemplate.opsForHash().entries(key);
@@ -50,6 +52,8 @@ public class RefreshTokenInterceptor implements HandlerInterceptor {
     @Override
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) throws Exception {
         // 移除用户
-        UserHolder.removeUser();
+//        UserHolder.removeUser();
+        // 补丁2，移除用户和token
+        UserHolder.removeAll();
     }
 }

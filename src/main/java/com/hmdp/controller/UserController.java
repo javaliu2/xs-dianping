@@ -12,6 +12,7 @@ import com.hmdp.service.IUserService;
 import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpSession;
@@ -136,6 +137,20 @@ public class UserController {
     public Result getContinueSignDays() {
         log.info("获取连续签到天数");
         Object data = userService.getContinueSignDays();
+        return Result.ok(data);
+    }
+
+    /**
+     * 上传头像，返回服务器保存的图片文件路径
+     * @return
+     */
+    @PostMapping("/uplaod/icon")
+    public Result uploadIcon(@RequestParam("file") MultipartFile file) {
+        log.info("上传图片");
+        Object data = userService.uploadIcon(file);
+        if (data == null) {
+            return Result.fail("文件上传失败");
+        }
         return Result.ok(data);
     }
 }
