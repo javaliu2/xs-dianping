@@ -260,4 +260,19 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         updateById(user);
         return iconPath;
     }
+
+    @Override
+    public Object updateNick(UserDTO userDTO) {
+        // 更新数据库
+        // sql:
+        User user = new User();
+        user.setId(userDTO.getId());
+        user.setNickName(userDTO.getNickName());
+        boolean success = updateById(user);
+        // 更新redis
+        String token = UserHolder.getToken();
+        String key = LOGIN_USER_KEY + token;
+        stringRedisTemplate.opsForHash().put(key, "nickName", userDTO.getNickName());
+        return success;
+    }
 }

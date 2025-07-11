@@ -153,4 +153,13 @@ public class UserController {
         }
         return Result.ok(data);
     }
+    @PostMapping("/updateNick")
+    public Result updateNick(@RequestBody UserDTO userDTO) {
+        log.info("更新昵称");
+        Object data = userService.updateNick(userDTO);
+        if (data == null) {
+            return Result.fail("更新昵称失败");
+        }
+        return Result.ok("更新昵称成功");
+    }
 }
