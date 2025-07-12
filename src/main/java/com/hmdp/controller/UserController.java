@@ -79,6 +79,7 @@ public class UserController {
 
     @GetMapping("/info/{id}")
     public Result info(@PathVariable("id") Long userId){
+        log.info("查询用户信息");
         // 查询详情
         UserInfo info = userInfoService.getById(userId);
         if (info == null) {
@@ -161,5 +162,11 @@ public class UserController {
             return Result.fail("更新昵称失败");
         }
         return Result.ok("更新昵称成功");
+    }
+    @PostMapping("/updateUserInfo")
+    public Result updateUserInfo(@RequestBody UserInfo userInfo) {
+        log.info("更新用户信息");
+        userInfoService.updateById(userInfo);
+        return Result.ok();
     }
 }

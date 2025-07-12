@@ -151,7 +151,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         Long userId = UserHolder.getUser().getId();
         // 2、分页查询博文
         String key = RedisConstants.FEED_KEY + userId;
-        // 3、根据博文id查询博文 zrevrangebyscore key max min limit offset count
+        // 3、根据博文id查询博文 zrevrangebyscore key max min LIMIT offset count
         Set<ZSetOperations.TypedTuple<String>> typedTuples = stringRedisTemplate.opsForZSet().
                 reverseRangeByScoreWithScores(key, 0, max, offset, 2);
         if (typedTuples == null || typedTuples.isEmpty()) {
