@@ -22,11 +22,9 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.lang.reflect.Field;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -338,16 +336,126 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         List<Shop> shops = query().in("id", ids).list();
         // 3.1 填充shop的distance属性
         shops.forEach(shop -> shop.setDistance(distanceMap.get(shop.getId())));
-        for (Shop shop : shops) {
-            System.out.println(shop);
-        }
+//        for (Shop shop : shops) {
+//            System.out.println(shop);
+//        }
         // 查询所有的数据，然后截取[start, end)的列表数据
         int start = (current - 1) * SystemConstants.DEFAULT_PAGE_SIZE;
         int end = current * SystemConstants.DEFAULT_PAGE_SIZE;
-        return shops;
+        if (sortBy.isEmpty()) {
+            if (start >= shops.size()) {
+                return Collections.emptyList();
+            } else if (end > shops.size()) {
+                return shops.subList(start, shops.size());
+            }
+            return shops.subList(start, end);
+        }
         // 查询所有商铺数据，对商铺进行打分，然后排序，截取分页数据，返回前端。
         // 判断sortBy中条件的个数，如果是1个，那么权重就是1.0；如果是2个，那么权重就是0.7，0.3；如果是三个，那么就是0.5，0.3，0.2；
         // 对每一个字段进行归一化处理，以距离为例，distance_norm=(distance-distance_min)/(distance_max-dist_min+1e6)
-        // 以三个字段为例，得分 = distance_norm*0.5 + score_norm*0.3 + comments*0.2
+        // 以三个字段为例，得分 = distance_norm*0.5 + score_norm*0.3 + comments_norm*0.2
+        // 正则化
+        for (String field : sortBy) {
+            normalization(shops, field);
+        }
+        // 计算推荐得分
+        double[] weights_1 = new double[]{ 1.0 };
+        double[] weights_2 = new double[]{ 0.7, 0.3 };
+        double[] weights_3 = new double[]{ 0.5, 0.3, 0.2};
+        if (sortBy.size() == 1) {
+            computeTotalScore(sortBy, shops, weights_1);
+        } else if (sortBy.size() == 2) {
+            computeTotalScore(sortBy, shops, weights_2);
+        } else if (sortBy.size() == 3) {
+            computeTotalScore(sortBy, shops, weights_3);
+        }
+        // 排序（降序）
+        shops.sort((s1, s2) -> Double.compare(s2.getTotalScore(), s1.getTotalScore()));
+        if (start >= shops.size()) {
+            return Collections.emptyList();
+        } else if (end > shops.size()) {
+            return shops.subList(start, shops.size());
+        }
+        return shops.subList(start, end);
+    }
+
+    private void computeTotalScore(List<String> sortBy, List<Shop> shops, double[] weights) {
+        if (shops == null || shops.isEmpty()) {
+            return;
+        }
+        // 使用反射
+        Class<? extends Shop> classObj = shops.get(0).getClass();
+        // 计算每一个shop的推荐得分
+        for (Shop shop : shops) {
+            for (int i = 0; i < sortBy.size(); i++) {
+                String field = sortBy.get(i) + "_norm";
+                try {
+                    Field declaredField = classObj.getDeclaredField(field);
+                    declaredField.setAccessible(true);
+                    Double value = (Double)declaredField.get(shop);
+                    double v = value * weights[i];
+                    Field totalScoreField = classObj.getDeclaredField("totalScore");
+                    totalScoreField.setAccessible(true);
+                    Double o = (Double)totalScoreField.get(shop);
+                    if (o == null) {
+                        totalScoreField.set(shop, 0.0);
+                        o = (Double)totalScoreField.get(shop);
+                    }
+                    o += v;
+                    totalScoreField.set(shop, o);
+                } catch (NoSuchFieldException | IllegalAccessException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        }
+    }
+
+    private void normalization(List<Shop> shops, String field) {
+        if (field.equals("distance")) {
+            if (shops != null && shops.size() > 0) {
+                double min = shops.get(0).getDistance(), max = shops.get(0).getDistance();
+                for (int i = 1; i < shops.size(); i++) {
+                    double dist = shops.get(i).getDistance();
+                    if (dist > max) {
+                        max = dist;
+                    }
+                    if (dist < min) {
+                        min = dist;
+                    }
+                }
+                double finalMin = min, finalMax = max;
+                shops.forEach(shop -> shop.setDistance_norm(-1.0 * (shop.getDistance() - finalMin)/(finalMax - finalMin + Math.pow(10, -6))));  // 距离是负相关
+            }
+        } else if (field.equals("score")){
+            if (shops != null && shops.size() > 0) {
+                double min = shops.get(0).getScore(), max = shops.get(0).getScore();
+                for (int i = 1; i < shops.size(); i++) {
+                    double score = shops.get(i).getScore();
+                    if (score > max) {
+                        max = score;
+                    }
+                    if (score < min) {
+                        min = score;
+                    }
+                }
+                double finalMin = min, finalMax = max;
+                shops.forEach(shop -> shop.setScore_norm((shop.getScore() - finalMin)/(finalMax - finalMin + Math.pow(10, -6))));
+            }
+        } else if (field.equals("comments")) {
+            if (shops != null && shops.size() > 0) {
+                double min = shops.get(0).getComments(), max = shops.get(0).getComments();
+                for (int i = 1; i < shops.size(); i++) {
+                    double comments = shops.get(i).getComments();
+                    if (comments > max) {
+                        max = comments;
+                    }
+                    if (comments < min) {
+                        min = comments;
+                    }
+                }
+                double finalMin = min, finalMax = max;
+                shops.forEach(shop -> shop.setComments_norm((shop.getComments() - finalMin)/(finalMax - finalMin + Math.pow(10, -6))));
+            }
+        }
     }
 }

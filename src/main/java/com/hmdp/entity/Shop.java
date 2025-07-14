@@ -106,4 +106,13 @@ public class Shop implements Serializable {
 
     @TableField(exist = false)  // 表明该属性只在实体类有，表中没有对应的字段
     private Double distance;
+
+    @TableField(exist = false)
+    private Double totalScore;  // 推荐得分，数据排序使用
+    @TableField(exist = false)
+    private Double distance_norm;
+    @TableField(exist = false)
+    private Double score_norm;
+    @TableField(exist = false)
+    private Double comments_norm;
 }
