@@ -14,6 +14,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.RedisData;
 import com.hmdp.utils.SystemConstants;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.geo.*;
 import org.springframework.data.redis.connection.RedisGeoCommands;
@@ -29,8 +30,6 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * <p>
@@ -41,6 +40,7 @@ import java.util.stream.Stream;
  * @since 2021-12-22
  */
 @Service
+@Slf4j
 public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IShopService {
 
     @Autowired
@@ -239,8 +239,11 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         return Result.ok();
     }
 
+    /**
+     * 黑马实现
+     */
     @Override
-    public Object queryShopByType(Integer typeId, Integer current, Double x, Double y) {
+    public Object queryShopByType_hm(Integer typeId, Integer current, Double x, Double y, List<String> sortBy, Integer distance) {
         // 1、判断前端是否传递了x和y
         if (x == null || y == null) {
             // 1.1 没有传递，就是普通的分页查询
@@ -258,7 +261,12 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         String key = RedisConstants.SHOP_GEO_KEY + typeId;
         // 查询key为键的地理集合中，Circle确定的圆心为Point，距离小于Distance的地理entry
         // 返回结果包括距离信息，且只查询前end条记录
-        GeoResults<RedisGeoCommands.GeoLocation<String>> shopGeo = stringRedisTemplate.opsForGeo().radius(key, new Circle(new Point(x, y), new Distance(5000)), RedisGeoCommands.GeoRadiusCommandArgs.newGeoRadiusArgs().includeDistance().limit(end));
+        double dist = distance;
+        if (distance == 0) {
+            dist = Double.MAX_VALUE;
+        }
+        log.info("dist: {}", dist);
+        GeoResults<RedisGeoCommands.GeoLocation<String>> shopGeo = stringRedisTemplate.opsForGeo().radius(key, new Circle(new Point(x, y), new Distance(dist)), RedisGeoCommands.GeoRadiusCommandArgs.newGeoRadiusArgs().includeDistance().limit(end));
         if (shopGeo == null) {
             return null;
         }
@@ -288,5 +296,58 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         // 3.1 填充shop的distance属性
         shops.forEach(shop -> shop.setDistance(distanceMap.get(shop.getId())));
         return shops;
+    }
+
+    @Override
+    public Object queryShopByType(Integer typeId, Integer current, Double x, Double y, List<String> sortBy, Integer distance) {
+        // 1、判断前端是否传递了x和y
+        if (x == null || y == null) {
+            // 1.1 没有传递，就是普通的分页查询
+            Page<Shop> page = query()
+                    .eq("type_id", typeId)
+                    .page(new Page<>(current, SystemConstants.DEFAULT_PAGE_SIZE));
+            return page.getRecords();
+        }
+
+        String key = RedisConstants.SHOP_GEO_KEY + typeId;
+        double dist = distance;
+        if (distance == 0) {
+            dist = 50000;  // 50km, 查询所有数据
+        }
+        log.info("dist: {}", dist);
+        GeoResults<RedisGeoCommands.GeoLocation<String>> shopGeo = stringRedisTemplate.opsForGeo().radius(key, new Circle(new Point(x, y), new Distance(dist)), RedisGeoCommands.GeoRadiusCommandArgs.newGeoRadiusArgs().includeDistance());
+        if (shopGeo == null) {
+            return null;
+        }
+        // RedisGeoCommands.GeoLocation<String>就是(member, longitude, latitude)
+        // GeoResult除了以上content，还包括distance
+        // 存在多个符合条件的entry，故是List
+        List<GeoResult<RedisGeoCommands.GeoLocation<String>>> contents = shopGeo.getContent();
+
+        List<Long> ids = new ArrayList<>();
+        Map<Long, Double> distanceMap = new HashMap<>();
+        contents.forEach(result -> {
+                    RedisGeoCommands.GeoLocation<String> content = result.getContent();
+                    Long shopId = Long.valueOf(content.getName());
+                    ids.add(shopId);  // 商铺id
+                    double value = result.getDistance().getValue();  // 与(x, y)的距离
+                    distanceMap.put(shopId, value);
+                }
+        );
+        // 3、查询数据库获得以上商铺的全部信息
+        List<Shop> shops = query().in("id", ids).list();
+        // 3.1 填充shop的distance属性
+        shops.forEach(shop -> shop.setDistance(distanceMap.get(shop.getId())));
+        for (Shop shop : shops) {
+            System.out.println(shop);
+        }
+        // 查询所有的数据，然后截取[start, end)的列表数据
+        int start = (current - 1) * SystemConstants.DEFAULT_PAGE_SIZE;
+        int end = current * SystemConstants.DEFAULT_PAGE_SIZE;
+        return shops;
+        // 查询所有商铺数据，对商铺进行打分，然后排序，截取分页数据，返回前端。
+        // 判断sortBy中条件的个数，如果是1个，那么权重就是1.0；如果是2个，那么权重就是0.7，0.3；如果是三个，那么就是0.5，0.3，0.2；
+        // 对每一个字段进行归一化处理，以距离为例，distance_norm=(distance-distance_min)/(distance_max-dist_min+1e6)
+        // 以三个字段为例，得分 = distance_norm*0.5 + score_norm*0.3 + comments*0.2
     }
 }

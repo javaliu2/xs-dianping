@@ -68,7 +68,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         String key = LOGIN_CODE_KEY + phone;
         stringRedisTemplate.opsForValue().set(key, code, LOGIN_CODE_TTL, TimeUnit.MINUTES);
         log.debug("[Service]: 发送短信验证码成功，验证码：{}", code);
-        return Result.ok();
+        return Result.ok(code);
     }
 
     @Override
